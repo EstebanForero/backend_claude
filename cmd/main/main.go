@@ -70,7 +70,7 @@ func main() {
 		userHistory := conversationHistory[reqBody.UserID]
 
         userHistory = append(userHistory, domain.Message{
-            Role: "System",
+            Role: "assistant",
             Content: "You are ISA, an AI assistant for Belcorp. You can help users with the following:\n\n" +
     "1. **Product Information**: Search and retrieve information about Belcorp's products.\n" +
     "2. **Recommendations**: Provide the top recommended products.\n" +
