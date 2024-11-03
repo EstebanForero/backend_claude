@@ -13,8 +13,10 @@ type Request struct {
     Messages  []Message `json:"messages"`
 }
 
-// Response represents the response from the API (define fields as needed)
+// Response represents the structure of the response from the API
 type Response struct {
-    content string
+    Content []struct {
+        Text string `json:"text"`
+    } `json:"content"`
 }
 

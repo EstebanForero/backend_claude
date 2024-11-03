@@ -3,6 +3,7 @@ package service
 import (
     "bytes"
     "encoding/json"
+    "errors"
     "io/ioutil"
     "net/http"
     "backend_claude/domain"
@@ -66,6 +67,17 @@ func (c *AnthropicClient) SendMessage(content string) (string, error) {
         return "", err
     }
 
-    return string(bodyBytes), nil
+    // Parse the JSON response
+    var apiResponse domain.Response
+    if err := json.Unmarshal(bodyBytes, &apiResponse); err != nil {
+        return "", err
+    }
+
+    // Extract the text content
+    if len(apiResponse.Content) > 0 {
+        return apiResponse.Content[0].Text, nil
+    }
+
+    return "", errors.New("no text content found in response")
 }
 
