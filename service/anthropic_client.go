@@ -36,6 +36,13 @@ func (c *AnthropicClient) SendMessage(messages []domain.Message) (string, error)
         })
     }
 
+    if (messages[0].Content != systemMessage) {
+        messages = append(messages, domain.Message{
+            Role: "system",
+            Content: systemMessage,
+        })
+    }
+
     message := domain.Request{
         Model:     "claude-3-5-sonnet-20241022",
         MaxTokens: 1024,
