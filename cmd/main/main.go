@@ -1,62 +1,114 @@
 package main
 
 import (
-    "encoding/json"
-    "fmt"
-    "log"
-    "net/http"
-    "os"
-    "backend_claude/service"
+	"backend_claude/service"
+	"encoding/json"
+	"fmt"
+	"log"
+	"net/http"
+	"os"
+	"sync"
+	"backend_claude/domain"
+	"github.com/rs/cors"
 )
 
 type requestBody struct {
-    Message string `json:"message"`
+	UserID  string `json:"user_id"`
+	Message string `json:"message"`
 }
 
 type responseBody struct {
-    Response string `json:"response"`
+	Response string `json:"response"`
 }
 
 func main() {
-    // Retrieve the API key from an environment variable
-    apiKey := os.Getenv("ANTHROPIC_API_KEY")
-    if apiKey == "" {
-        log.Fatal("ANTHROPIC_API_KEY environment variable not set")
-    }
 
-    // Create a new Anthropic client
-    client := service.NewAnthropicClient(apiKey)
+	var (
+		conversationHistory = make(map[string][]domain.Message)
+		historyMutex        = &sync.RWMutex{}
+	)
 
-    // Set up the HTTP server
-    http.HandleFunc("/ask-claude", func(w http.ResponseWriter, r *http.Request) {
-        // Ensure the request method is POST
-        if r.Method != http.MethodPost {
-            http.Error(w, "Only POST requests are allowed", http.StatusMethodNotAllowed)
-            return
-        }
+	apiKey := os.Getenv("ANTHROPIC_API_KEY")
+	if apiKey == "" {
+		log.Fatal("ANTHROPIC_API_KEY environment variable not set")
+	}
 
-        // Parse the JSON request body
-        var reqBody requestBody
-        err := json.NewDecoder(r.Body).Decode(&reqBody)
-        if err != nil {
-            http.Error(w, "Invalid request body", http.StatusBadRequest)
-            return
-        }
+	client := service.NewAnthropicClient(apiKey)
 
-        // Send the message to the Anthropic API
-        response, err := client.SendMessage(reqBody.Message)
-        if err != nil {
-            http.Error(w, "Failed to get response from Anthropic API", http.StatusInternalServerError)
-            return
-        }
+	http.HandleFunc("/ask-claude", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == "OPTIONS" {
+			w.Header().Set("Access-Control-Allow-Origin", "*")
+			w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+			w.WriteHeader(http.StatusOK)
+			return
+		}
 
-        // Return the response as JSON
-        resBody := responseBody{Response: response}
-        w.Header().Set("Content-Type", "application/json")
-        json.NewEncoder(w).Encode(resBody)
-    })
+		log.Println("Received a request")
 
-    fmt.Println("Server is running on http://localhost:8080")
-    log.Fatal(http.ListenAndServe(":8080", nil))
+		if r.Method != http.MethodPost {
+			http.Error(w, "Only POST requests are allowed", http.StatusMethodNotAllowed)
+			log.Println("Invalid method")
+			return
+		}
+
+		var reqBody requestBody
+		err := json.NewDecoder(r.Body).Decode(&reqBody)
+		if err != nil {
+			http.Error(w, "Invalid request body", http.StatusBadRequest)
+			log.Println("Failed to decode request body:", err)
+			return
+		}
+		log.Println("Request body decoded successfully:", reqBody)
+
+		if reqBody.UserID == "" {
+			http.Error(w, "User ID is required", http.StatusBadRequest)
+			log.Println("User ID not provided")
+			return
+		}
+
+		historyMutex.Lock()
+		userHistory := conversationHistory[reqBody.UserID]
+
+		userHistory = append(userHistory, domain.Message{
+			Role:    "user",
+			Content: reqBody.Message,
+		})
+
+		if len(userHistory) > 10 {
+			userHistory = userHistory[len(userHistory)-10:]
+		}
+
+		conversationHistory[reqBody.UserID] = userHistory
+		historyMutex.Unlock()
+
+		response, err := client.SendMessage(userHistory)
+
+		if err != nil {
+			http.Error(w, "Failed to get response from Anthropic API", http.StatusInternalServerError)
+			log.Println("Error from Anthropic API:", err)
+			return
+		}
+		log.Println("Response from Anthropic API:", response)
+
+		historyMutex.Lock()
+		conversationHistory[reqBody.UserID] = append(conversationHistory[reqBody.UserID], domain.Message{
+			Role:    "assistant",
+			Content: response,
+		})
+		if len(conversationHistory[reqBody.UserID]) > 10 {
+			conversationHistory[reqBody.UserID] = conversationHistory[reqBody.UserID][len(conversationHistory[reqBody.UserID])-10:]
+		}
+		historyMutex.Unlock()
+
+		resBody := responseBody{Response: response}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(resBody)
+	})
+
+	c := cors.Default()
+	handler := c.Handler(http.DefaultServeMux)
+
+	fmt.Println("Server is running on http://localhost:8080")
+	log.Fatal(http.ListenAndServe(":8080", handler))
 }
 
