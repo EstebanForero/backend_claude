@@ -29,19 +29,10 @@ func NewAnthropicClient(apiKey string) *AnthropicClient {
 func (c *AnthropicClient) SendMessage(messages []domain.Message) (string, error) {
     url := "https://api.anthropic.com/v1/messages"
 
-    if len(messages) == 0 {
-        messages = append(messages, domain.Message{
-            Role: "system",
-            Content: systemMessage,
-        })
-    }
-
-    if (messages[0].Content != systemMessage) {
-        messages = append(messages, domain.Message{
-            Role: "system",
-            Content: systemMessage,
-        })
-    }
+    messages = append(messages, domain.Message{
+        Role: "system",
+        Content: systemMessage,
+    })
 
     message := domain.Request{
         Model:     "claude-3-5-sonnet-20241022",
