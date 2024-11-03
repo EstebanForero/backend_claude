@@ -35,6 +35,7 @@ func main() {
 
 	client := service.NewAnthropicClient(apiKey)
 
+	// Define the handler function
 	http.HandleFunc("/ask-claude", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == "OPTIONS" {
 			w.Header().Set("Access-Control-Allow-Origin", "*")
@@ -51,6 +52,7 @@ func main() {
 			return
 		}
 
+		// Parse the JSON request body
 		var reqBody requestBody
 		err := json.NewDecoder(r.Body).Decode(&reqBody)
 		if err != nil {
@@ -66,6 +68,7 @@ func main() {
 			return
 		}
 
+		// Lock the history and add the user's message
 		historyMutex.Lock()
 		userHistory := conversationHistory[reqBody.UserID]
 
@@ -81,6 +84,7 @@ func main() {
 		conversationHistory[reqBody.UserID] = userHistory
 		historyMutex.Unlock()
 
+		// Send the message to the API and get a response
 		response, err := client.SendMessage(userHistory)
 
 		if err != nil {
@@ -90,6 +94,7 @@ func main() {
 		}
 		log.Println("Response from Anthropic API:", response)
 
+		// Update conversation history with the assistant's response
 		historyMutex.Lock()
 		conversationHistory[reqBody.UserID] = append(conversationHistory[reqBody.UserID], domain.Message{
 			Role:    "assistant",
@@ -100,11 +105,13 @@ func main() {
 		}
 		historyMutex.Unlock()
 
+		// Send the response back
 		resBody := responseBody{Response: response}
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(resBody)
 	})
 
+	// Wrap the default server with CORS
 	c := cors.Default()
 	handler := c.Handler(http.DefaultServeMux)
 
